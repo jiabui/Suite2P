@@ -135,6 +135,9 @@ else
     
 end
 
+% init additional options (2/9/18)
+h.isThresholdcurrentselection = 1;
+
 % activate all pushbuttons
 pb = [84 93 101 86 87 89 90 92 103 98 95 96 102 99 100 1 2 104 112];
 for j = 1:numel(pb)
@@ -147,6 +150,15 @@ end
 set(h.full,'Enable', 'on');
 set(h.edit50,'Enable', 'on');
 set(h.edit50,'String', num2str(h.dat.cl.threshold));
+set(h.edit52,'Enable', 'on');
+set(h.edit54,'Enable', 'on');
+set(h.edit52,'String','-Inf');
+set(h.edit54,'String','Inf');
+h.statstr = 'npix';
+h.statstrs = {'npix','cmpct','aspect_ratio','skew','std','footprint','mimgProj'};
+h.statnum = 1;
+h.statmins = -Inf*ones(1,7);
+h.statmaxs = Inf*ones(1,7);
 set_Bcolor(h, 1);
 set_maskCcolor(h, 1);
 % select unit normalized ROI brightness
@@ -228,6 +240,14 @@ guidata(hObject,h);
 function pushbutton84_Callback(hObject, eventdata, h)
 % save proc file and rules file
 h.dat.F.trace = [];
+h=classifierFig(h);
+h=skewFig(h);
+h=meanimgFig(h);
+h=cmpctFig(h);
+h=footprintFig(h);
+h=redFig(h);
+h=ellipseFig(h);
+
 dat = h.dat;
 save([h.dat.filename(1:end-4) '_proc.mat'], 'dat')
 %
@@ -235,8 +255,12 @@ h.st0(:,1) = double([h.dat.stat.iscell]);
 %
 statLabels  = h.statLabels;
 prior       = h.prior;
-st          = cat(1, h.st, h.st0);
-save(h.dat.cl.fpath, 'st', 'statLabels', 'prior')
+try
+    st          = cat(1, h.st, h.st0);
+    save(h.dat.cl.fpath, 'st', 'statLabels', 'prior')
+catch
+    disp('error saving prior');
+end
 
 
 function figure1_ResizeFcn(hObject, eventdata, h)
@@ -553,22 +577,30 @@ else
     h.dat.cl.rands   = .1 + .7*rand(length(h.dat.stat), 1);
 end
 h.dat.cl.rands(logical([h.dat.stat.redcell])) = 0;
-redraw_figure(h);
+I = redraw_figure(h);
 set_maskCcolor(h, 1);
 guidata(hObject,h);
 
 % --- classifier
 function pushbutton95_Callback(hObject, eventdata, h)
+h=classifierFig(h);
+guidata(hObject,h);
+
+function h = classifierFig(h)
 hval0            = [h.dat.stat.cellProb];
 hval             = .6 * (1 - hval0) + .15;
 h.dat.cl.rands   = hval;
 h.dat.cl.cmap    = [hval0(:) hval(:)]; 
-redraw_figure(h);
+I = redraw_figure(h);
+h.dat.cl.classifierFig = I;
 set_maskCcolor(h, 2);
-guidata(hObject,h);
 
 % --- skew
 function pushbutton96_Callback(hObject, eventdata, h)
+h = skewFig(h);
+guidata(hObject,h);
+
+function h = skewFig(h)
 hval0            = [h.dat.stat.skew];
 hval             = hval0 / nanmean(hval0);
 hval             = max(0, hval - (1 - 2*nanstd(hval))) + 1;
@@ -576,12 +608,16 @@ hval             = log(hval) / nanmean(log(hval));
 hval             = .6 * (1 - min(2*nanstd(hval)+1, hval)/(nanstd(hval)*2 + 1)) + .15;
 h.dat.cl.rands   = hval;
 h.dat.cl.cmap    = [hval0(:) hval(:)]; 
-redraw_figure(h);
+I = redraw_figure(h);
+h.dat.cl.skewFig = I;
 set_maskCcolor(h, 3);
-guidata(hObject,h);
 
 % --- ellipse
 function pushbutton112_Callback(hObject, eventdata, h)
+h=ellipseFig(h);
+guidata(hObject,h);
+
+function h=ellipseFig(h)
 hval0            = min(5, [h.dat.stat.aspect_ratio]);
 hval             = hval0;
 hval             = hval - min(hval);
@@ -589,12 +625,16 @@ hval             = hval / nanmean(hval);
 hval             = .6 * (1 - min(2*nanstd(hval)+1, hval)/(nanstd(hval)*2 + 1)) + .15;
 h.dat.cl.rands   = hval;
 h.dat.cl.cmap    = [hval0(:) hval(:)]; 
-redraw_figure(h);
+I = redraw_figure(h);
+h.dat.cl.ellipseFig = I;
 set_maskCcolor(h, 8);
-guidata(hObject,h);
 
 % --- meanimg
 function pushbutton102_Callback(hObject, eventdata, h)
+h=meanimgFig(h);
+guidata(hObject,h);
+
+function h=meanimgFig(h)
 hval0            = [h.dat.stat.mimgProjAbs];
 hval             = hval0;
 hval             = hval - min(hval);
@@ -602,12 +642,17 @@ hval             = hval / nanmean(hval);
 hval             = .6 * (1 - min(2*nanstd(hval)+1, hval)/(nanstd(hval)*2 + 1)) + .15;
 h.dat.cl.rands   = hval;
 h.dat.cl.cmap    = [hval0(:) hval(:)]; 
-redraw_figure(h);
+I = redraw_figure(h);
+h.dat.cl.meanimgFig = I;
 set_maskCcolor(h, 4);
-guidata(hObject,h);
+
 
 % --- cmpct
 function pushbutton99_Callback(hObject, eventdata, h)
+h=cmpctFig(h);
+guidata(hObject,h);
+
+function h=cmpctFig(h)
 hval0            = min(3, [h.dat.stat.cmpct]);
 hval             = hval0;
 hval             = hval - min(hval);
@@ -615,12 +660,16 @@ hval             = hval / nanmean(hval);
 hval             = .6 * (1 - min(2*nanstd(hval)+1, hval)/(nanstd(hval)*2 + 1)) + .15;
 h.dat.cl.rands   = hval;
 h.dat.cl.cmap    = [hval0(:) hval(:)]; 
-redraw_figure(h);
+I = redraw_figure(h);
+h.dat.cl.cmpctFig = I;
 set_maskCcolor(h, 5);
-guidata(hObject,h);
 
 % --- footprint
 function pushbutton100_Callback(hObject, eventdata, h)
+h=footprintFig(h);
+guidata(hObject,h);
+
+function h=footprintFig(h)
 hval0            = [h.dat.stat.footprint];
 hval             = hval0;
 hval             = hval - min(hval);
@@ -628,12 +677,17 @@ hval             = hval / nanmean(hval);
 hval             = .6 * (1 - min(2*nanstd(hval)+1, hval)/(nanstd(hval)*2 + 1)) + .15;
 h.dat.cl.rands   = hval;
 h.dat.cl.cmap    = [hval0(:) hval(:)]; 
-redraw_figure(h);
+I = redraw_figure(h);
+h.dat.cl.footprintFig = I;
 set_maskCcolor(h, 6);
-guidata(hObject,h);
+
 
 % --- red channel
 function pushbutton104_Callback(hObject, eventdata, h)
+h=redFig(h);
+guidata(hObject,h);
+
+function h=redFig(h)
 hval0            = [h.dat.stat.redprob];
 hval             = hval0;
 hval             = hval / nanmean(hval);
@@ -642,9 +696,10 @@ hval             = log(hval) / nanmean(log(hval));
 hval             = .6 * (1 - min(2*nanstd(hval)+1, hval)/(nanstd(hval)*2 + 1)) + .15;
 h.dat.cl.rands   = hval;
 h.dat.cl.cmap    = [hval0(:) hval(:)]; 
-redraw_figure(h);
+I = redraw_figure(h);
+h.dat.cl.redFig  = I;
 set_maskCcolor(h, 7);
-guidata(hObject,h);
+
 
 
 % ------------------ CLASSIFIER --------------------------%
@@ -812,3 +867,158 @@ msg{3} = ['Buttons become dark grey after visiting a quadrant.'];
 
 msgbox(msg, 'ZOOM panel instructions');
 
+
+
+
+% --- Executes on selection change in popupmenu12.
+function popupmenu12_Callback(hObject, eventdata, h)
+% hObject    handle to popupmenu12 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+contents = cellstr(get(hObject,'String'));
+popstr = contents{get(hObject,'Value')};
+
+switch popstr
+    case 'number of pixels'
+        stn = 1;
+    case 'compactness'
+        stn = 2;
+    case 'aspect ratio'
+        stn = 3;
+    case 'skewness'
+        stn = 4;
+    case 'standard dev'
+        stn = 5;
+    case 'footprint'
+        stn = 6;
+    case 'meanimg proj'
+        stn = 7;
+end
+set(h.edit52,'String',num2str(h.statmins(stn)));
+set(h.edit54,'String',num2str(h.statmaxs(stn)));
+
+h.statstr = h.statstrs{stn};
+h.statnum = stn;
+
+guidata(hObject,h);
+
+% Hints: contents = cellstr(get(hObject,'String')) returns popupmenu12 contents as cell array
+%        contents{get(hObject,'Value')} returns selected item from popupmenu12
+
+
+% --- Executes during object creation, after setting all properties.
+function popupmenu12_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to popupmenu12 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: popupmenu controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+function edit52_Callback(hObject, eventdata, h)
+% hObject    handle to edit52 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+h.statmins(h.statnum) = str2double(get(hObject,'String'));
+
+goodcells = set_thres(h.dat.stat, h.statstrs, h.statmins, h.statmaxs);
+if ~h.isThresholdcurrentselection    
+    [h.dat.stat(~goodcells).iscell] = deal(0);
+    [h.dat.stat(goodcells).iscell]  = deal(1);
+else
+    currentcells = logical([h.dat.stat(:).iscell]);
+    tf = currentcells & goodcells;
+    [h.dat.stat(~tf).iscell] = deal(0);
+    [h.dat.stat(tf).iscell] = deal(1);
+end
+
+redraw_figure(h);
+
+guidata(hObject,h);
+% Hints: get(hObject,'String') returns contents of edit52 as text
+%        str2double(get(hObject,'String')) returns contents of edit52 as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function edit52_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit52 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function edit54_Callback(hObject, eventdata, h)
+% hObject    handle to edit54 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+h.statmaxs(h.statnum) = str2double(get(hObject,'String'));
+
+goodcells = set_thres(h.dat.stat, h.statstrs, h.statmins, h.statmaxs);
+if ~h.isThresholdcurrentselection    
+    [h.dat.stat(~goodcells).iscell] = deal(0);
+    [h.dat.stat(goodcells).iscell]  = deal(1);
+else
+    currentcells = logical([h.dat.stat(:).iscell]);
+    tf = currentcells & goodcells;
+    [h.dat.stat(~tf).iscell] = deal(0);
+    [h.dat.stat(tf).iscell] = deal(1);
+end
+
+redraw_figure(h);
+
+guidata(hObject,h);
+
+% Hints: get(hObject,'String') returns contents of edit54 as text
+%        str2double(get(hObject,'String')) returns contents of edit54 as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function edit54_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit54 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+function goodcells = set_thres(stat, statstrs, statmins, statmaxs)
+goodcells = true(size(stat));
+for j = 1:length(statstrs) 
+    svals = [stat.(statstrs{j})];
+    goodcells = goodcells & (svals > statmins(j) & svals < statmaxs(j));    
+end
+    
+    
+    
+
+
+% --- Executes on button press in pb_export.
+function pb_export_Callback(hObject, eventdata, h)
+% hObject    handle to pb_export (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+assignin('base', 'h', h);
+
+
+% --- Executes on button press in checkbox1.
+function checkbox1_Callback(hObject, eventdata, h)
+% hObject    handle to checkbox1 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+h.isThresholdcurrentselection = get(hObject,'Value');
+guidata(hObject,h);
+% Hint: get(hObject,'Value') returns toggle state of checkbox1
