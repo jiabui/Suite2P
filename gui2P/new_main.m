@@ -439,7 +439,8 @@ if x>=1 && y>=1 && x<=h.dat.cl.Lx && y<=h.dat.cl.Ly && h.dat.res.iclust(y,x)>0
     redraw_figure(h);
     guidata(hObject,h);
     
-    str = [];
+    str = sprintf('cell #%d\n',ichosen);
+    
     labels = [h.statLabels(2:end), {'iscell'}, {'redcell'},{'redprob'}];
     for j =1:length(labels)
        if isfield(h.dat.stat, labels{j})
@@ -927,6 +928,7 @@ function edit52_Callback(hObject, eventdata, h)
 h.statmins(h.statnum) = str2double(get(hObject,'String'));
 
 goodcells = set_thres(h.dat.stat, h.statstrs, h.statmins, h.statmaxs);
+<<<<<<< HEAD
 if ~h.isThresholdcurrentselection    
     [h.dat.stat(~goodcells).iscell] = deal(0);
     [h.dat.stat(goodcells).iscell]  = deal(1);
@@ -936,6 +938,10 @@ else
     [h.dat.stat(~tf).iscell] = deal(0);
     [h.dat.stat(tf).iscell] = deal(1);
 end
+=======
+[h.dat.stat(~goodcells).iscell] = deal(0);
+[h.dat.stat(goodcells).iscell]  = deal(1);
+>>>>>>> 071a42a624d71b2a267acba2acdd9a9e9c6fbea7
 
 redraw_figure(h);
 
@@ -965,6 +971,7 @@ function edit54_Callback(hObject, eventdata, h)
 h.statmaxs(h.statnum) = str2double(get(hObject,'String'));
 
 goodcells = set_thres(h.dat.stat, h.statstrs, h.statmins, h.statmaxs);
+<<<<<<< HEAD
 if ~h.isThresholdcurrentselection    
     [h.dat.stat(~goodcells).iscell] = deal(0);
     [h.dat.stat(goodcells).iscell]  = deal(1);
@@ -974,6 +981,10 @@ else
     [h.dat.stat(~tf).iscell] = deal(0);
     [h.dat.stat(tf).iscell] = deal(1);
 end
+=======
+[h.dat.stat(~goodcells).iscell] = deal(0);
+[h.dat.stat(goodcells).iscell]  = deal(1);
+>>>>>>> 071a42a624d71b2a267acba2acdd9a9e9c6fbea7
 
 redraw_figure(h);
 
@@ -1006,6 +1017,7 @@ end
     
 
 
+<<<<<<< HEAD
 % --- Executes on button press in pb_export.
 function pb_export_Callback(hObject, eventdata, h)
 % hObject    handle to pb_export (see GCBO)
@@ -1022,3 +1034,7 @@ function checkbox1_Callback(hObject, eventdata, h)
 h.isThresholdcurrentselection = get(hObject,'Value');
 guidata(hObject,h);
 % Hint: get(hObject,'Value') returns toggle state of checkbox1
+=======
+
+
+>>>>>>> 071a42a624d71b2a267acba2acdd9a9e9c6fbea7

@@ -33,7 +33,7 @@ for i = 1:length(ops.planesToProcess)
     mimgR = dat.ops.mimgRED;
     mimgR = mimgR(dat.ops.yrange, dat.ops.xrange);
     mimgG = mimgG(dat.ops.yrange, dat.ops.xrange);
-    [Ny Nx] = size(mimgR);
+    [Ny, Nx] = size(mimgR);
     
     % regression
     nblks               = 3;
@@ -84,11 +84,11 @@ for i = 1:length(ops.planesToProcess)
     
     % set threshold for redpix
     ops.redthres = getOr(ops, 'redthres', 1.5);
-    ops.notredthres   = getOr(ops, 'notredthres', 1.25);
+    ops.redmax   = getOr(ops, 'redmax', 1.25);
     
     rrat = redSum(:,1)./(redSum(:,2)+redSum(:,1));
     redcell  = rrat > nanmean(rrat) + ops.redthres*nanstd(rrat);
-    notred   = rrat <= nanmean(rrat) + ops.notredthres*nanstd(rrat);
+    notred   = rrat <= nanmean(rrat) + ops.redmax*nanstd(rrat);
   
     
     fprintf('plane %d  reds %d\n',iplane,sum(redcell(:)));
@@ -101,6 +101,8 @@ for i = 1:length(ops.planesToProcess)
         dat.stat(j).notred  = notred(j);
     end
 
+    dat.ops.redthres = ops.redthres;
+    dat.ops.redmax   = ops.redmax;
     save(fname, '-struct', 'dat')
 end
 

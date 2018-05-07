@@ -1,5 +1,10 @@
 %% SET ALL DEFAULT OPTIONS HERE
 
+% UPDATE fall 2017: non-rigid and rigid registration scripts merged; red
+% channel mean image can be computed while registering green channel; red
+% channel binary can be computed during green channel registration
+% (ly x lx x time like green channel)
+
 % UPDATE end-of-summer 2017: default neuropil extraction is now "surround"
 % and it's very fast. Cell extraction is on the raw data (no pixel-scaling or smoothing). 
 
@@ -12,7 +17,8 @@
 % do specify the "diameter" of an average cell for best results. You can do this with either
 % db(iexp).diameter, or ops0.diameter
 
-% check out the README file for detailed instructions (and extra options)
+% check out the README file for detailed instructions
+% **** and for more options available ****
 addpath('D:\CODE\MariusBox\runSuite2P') % add the path to your make_db file
 
 % overwrite any of these default options in your make_db file for individual experiments
@@ -31,15 +37,16 @@ ops0.useGPU                 = 0; % if you can use an Nvidia GPU in matlab this a
 ops0.fig                    = 1; % turn off figure generation with 0
 % ops0.diameter               = 12; % most important parameter. Set here, or individually per experiment in make_db file
 
-% root paths for files and temporary storage (ideally an SSD drive. my SSD is C:/)
+% ---- root paths for files and temporary storage (ideally an SSD drive. my SSD is C:/)
 ops0.RootStorage            = '//zserver4/Data/2P'; % Suite2P assumes a folder structure, check out README file
 ops0.temp_tiff              = 'C:/DATA/temp.tif'; % copies each remote tiff locally first, into this file
 ops0.RegFileRoot            = 'C:/DATA/';  % location for binary file
 ops0.DeleteBin              = 1; % set to 1 for batch processing on a limited hard drive
 ops0.ResultsSavePath        = 'D:/DATA/F'; % a folder structure is created inside
 ops0.RegFileTiffLocation    = []; %'D:/DATA/'; % leave empty to NOT save registered tiffs (slow)
+% if you want to save red channel tiffs, also set ops0.REDbinary = 1
 
-% registration options
+% ---- registration options ------------------------------------- %
 ops0.doRegistration         = 1; % skip (0) if data is already registered
 ops0.showTargetRegistration = 1; % shows the image targets for all planes to be registered
 ops0.PhaseCorrelation       = 1; % set to 0 for non-whitened cross-correlation
@@ -48,7 +55,7 @@ ops0.NimgFirstRegistration  = 500; % number of images to include in the first re
 ops0.nimgbegend             = 0; % frames to average at beginning and end of blocks
 ops0.dobidi                 = 1; % infer and apply bidirectional phase offset
 
-% cell detection options
+% ---- cell detection options ------------------------------------------%
 ops0.ShowCellMap            = 1; % during optimization, show a figure of the clusters
 ops0.sig                    = 0.5;  % spatial smoothing length in pixels; encourages localized clusters
 ops0.nSVDforROI             = 1000; % how many SVD components for cell clustering
@@ -57,7 +64,7 @@ ops0.signalExtraction       = 'surround'; % how to extract ROI and neuropil sign
 %  'raw' (no cell overlaps), 'regression' (allows cell overlaps), 
 %  'surround' (no cell overlaps, surround neuropil model)
 
-% neuropil options (if 'surround' option)
+% ----- neuropil options (if 'surround' option) ------------------- %
 % all are in measurements of pixels
 ops0.innerNeuropil  = 1; % padding around cell to exclude from neuropil
 ops0.outerNeuropil  = Inf; % radius of neuropil surround
@@ -68,13 +75,18 @@ if isinf(ops0.outerNeuropil)
     % radius of surround neuropil = ops0.ratioNeuropil * (radius of cell)
 end
 
-
-% spike deconvolution and neuropil subtraction options
+% ----- spike deconvolution and neuropil subtraction options ----- %
 ops0.imageRate              = 30;   % imaging rate (cumulative over planes!). Approximate, for initialization of deconvolution kernel.
 ops0.sensorTau              = 2; % decay half-life (or timescale). Approximate, for initialization of deconvolution kernel.
 ops0.maxNeurop              = 1; % for the neuropil contamination to be less than this (sometimes good, i.e. for interneurons)
 
-% red channel options
+% ----- if you have a RED channel ---------------------- ------------%
+ops0.AlignToRedChannel      = 0; % compute registration offsets using red channel
+ops0.REDbinary              = 0; % make a binary file of registered red frames
+% if db.expred, then compute mean red image for green experiments with red
+% channel available while doing registration
+ops0.redMeanImg             = 0; 
+% for red cell detection (identify_redcells_sourcery.m)
 % redratio = red pixels inside / red pixels outside
 % redcell = redratio > mean(redratio) + redthres*std(redratio)
 % notred = redratio < mean(redratio) + redmax*std(redratio)
@@ -94,7 +106,12 @@ for iexp = 1 %[1:length(db0)]
     % add red channel information (if it exists)
     if isfield(db,'expred') && ~isempty(db.expred)
         % creates mean red channel image aligned to green channel
-        run_REDaddon_sourcery(db, ops0) ; 
+        % use this if you didn't get red channel during registration
+        % OR you have a separate experiment with red and green just for this
+        red_expts = ismember(db.expts, getOr(db, 'expred', []));
+        if ~ops0.redMeanImg || sum(red_expts)==0
+            run_REDaddon_sourcery(db, ops0);
+        end
         
         % identify red cells in mean red channel image
         % fills dat.stat.redcell, dat.stat.notred, dat.stat.redprob

@@ -1,40 +1,34 @@
 function ops1 = reg2P(ops)
 %%
-if getOr(ops, 'doRegistration', 1)
-    disp('running rigid registration');
+ops.doRegistration  = getOr(ops, {'doRegistration'}, 1); % register tiffs?
+
+if ops.doRegistration
+    disp('running registration');
 else
     disp('skipping registration, but assembling binary file');
 end
 
-numPlanes = length(ops.planesToProcess);
-
-nplanes            = getOr(ops, {'nplanes'}, 1);
-nchannels          = getOr(ops, {'nchannels'}, 1);
+ops = buildRegOps(ops);
+% --- number of planes in recording and number of channels --- %
+nplanes        = ops.nplanes;
+numPlanes          = length(ops.planesToProcess); % # of planes to process
+% which channel is the functional channel
 ichannel           = getOr(ops, {'gchannel'}, 1);
+% which channel is the non-functional channel
 rchannel           = getOr(ops, {'rchannel'}, 2);
-red_align          = getOr(ops, {'AlignToRedChannel'}, 0);
 
-ops.RegFileBinLocation = getOr(ops, {'RegFileBinLocation'}, []);
-RegFileBinLocation = getOr(ops, {'RegFileBinLocation'}, []);
-targetImage        = getOr(ops, {'targetImage'}, []); % specify experiment to generate target image from (useful if drift) 
-alignTargetImages  = getOr(ops, {'alignTargetImages'}, false); % if true, align target images to each other
-interpolateAcrossPlanes = getOr(ops, {'interpolateAcrossPlanes'}, false); %if true, similar looking planes will be averaged together to generate final movie
-planesToInterpolate = getOr(ops, {'planesToInterpolate'}, 1:nplanes); % these planes will be considered for interpolation
-alignAcrossPlanes  = getOr(ops, {'alignAcrossPlanes'}, false); % at each time point, frame will be aligned to best matching target image (from different planes)
+% --- red channel options ---%
+red_align          = getOr(ops, {'AlignToRedChannel'}, 0); % register planes to red channel
+red_binary          = getOr(ops, {'REDbinary'}, 0); % write red channel to a binary file
+% extract mean red channel from blocks of recording with two channels
+red_mean            = getOr(ops, {'redMeanImg'}, 0);
+if red_binary
+    red_mean = 1;
+end
+if red_mean
+    disp('computing mean RED image if ~isempty(db.expred)');
+end
 
-ops.splitFOV           = getOr(ops, {'splitFOV'}, [1 1]); % split FOV into chunks if memory issue
-% ops.splitFOV(1) = # of subsets in Y, ops.splitFOV(2) = # of subsets in X
-ops.smooth_time_space  = getOr(ops, 'smooth_time_space', []);
-LoadRegMean            = getOr(ops, {'LoadRegMean'}, 0);
-
-% bidirectional phase offset computation
-% assumes same bidirectional offset for each plane
-ops.dobidi             = getOr(ops, {'dobidi'}, 1); % compute bidiphase?
-% if set to a value by user, do not recompute
-if isfield(ops, 'BiDiPhase')
-    ops.dobidi         = 0;
-end 
-ops.BiDiPhase          = getOr(ops, {'BiDiPhase'}, 0); % set to default 0
 BiDiPhase              = ops.BiDiPhase;
 
 fs = ops.fsroot;
@@ -43,7 +37,7 @@ fs = ops.fsroot;
 
 % check if there are tiffs in directory
 try
-   IMG = loadFramesBuff(fs{1}(1).name, 1, 1, 1); 
+    IMG = loadFramesBuff(fs{1}(1).name, 1, 1, 1);
 catch
     error('could not find any tif or tiff, check your path');
 end
@@ -53,70 +47,56 @@ ops.Lx = Lx;
 
 % split into subsets (for high scanning resolution recordings)
 [xFOVs, yFOVs] = get_xyFOVs(ops);
-   
+
 if ops.doRegistration
     % get frames for initial registration
-    IMG = GetRandFrames(fs, ops);    
-    
+    IMG = GetRandFrames(fs, ops);
     % compute phase shifts from bidirectional scanning
     if ops.dobidi
         ops.BiDiPhase = BiDiPhaseOffsets(IMG);
     end
     BiDiPhase = ops.BiDiPhase;
     fprintf('bi-directional scanning offset = %d pixels\n', BiDiPhase);
-    if abs(BiDiPhase) > 0 
+    if abs(BiDiPhase) > 0
         IMG = ShiftBiDi(BiDiPhase, IMG, Ly, Lx);
-    end 
+    end
+    % makes blocks (number = numBlocks) and masks for smoothing registration offsets across blocks
+    if ops.nonrigid
+        ops = MakeBlocks(ops);
+    end
     
     % for each plane: align chosen frames to average to generate target image
     ops1 = cell(numPlanes, size(xFOVs,2));
     for i = 1:numPlanes
-        for j = 1:size(xFOVs,2)
-            ops1{i,j} = align_iterative(single(squeeze(IMG(yFOVs(:,j),xFOVs(:,j),...
-                ops.planesToProcess(i),:))), ops);
+        for l = 1:size(xFOVs,2)
+            if ops.nonrigid && ~(ops.alignAcrossPlanes || ops.interpolateAcrossPlanes)
+                ops1{i} = nonrigidAlignIterative(squeeze(IMG(:,:,ops.planesToProcess(i),:)), ops);
+            else
+                ops1{i,l} = alignIterative(single(squeeze(IMG(yFOVs(:,l),xFOVs(:,l),...
+                    ops.planesToProcess(i),:))), ops);
+            end
         end
+        fprintf('target image acquired for plane %d\n', ops.planesToProcess(i));
     end
     
-    if alignTargetImages % align target images of all planes to each other
+    if ops.alignTargetImages % align target images of all planes to each other
         % (reasonable only if interplane distance during imaging was small)
-        ds = zeros(length(planesToInterpolate), 2, size(xFOVs,2));
-        % planesToInterpolate should be indices of non-flyback planes
-        % (only those should be aligned)
-        for i = 2:length(planesToInterpolate) % align consecutive planes
-            pl = planesToInterpolate(i);
-            for j = 1:size(xFOVs,2)
-                ds(i,:,j) = registration_offsets(ops1{pl,j}.mimg, ops1{pl-1,j}, 0);
-            end
-        end
-        ds = cumsum(ds,1);
-        ds = bsxfun(@minus, ds, mean(ds,1));
-        images = zeros(Ly, Lx, length(planesToInterpolate), size(xFOVs,2));
-        for i = 1:length(planesToInterpolate)
-            for j = 1:size(xFOVs,2)
-                images(:,:,i,j) = ops1{planesToInterpolate(i),j}.mimg;
-            end
-        end
-        ds = reshape(permute(ds, [1 3 2]), [], 2);
-        images = reshape(images, Ly, Lx, []);
-        newTargets = register_movie(images, ops, ds);
-        newTargets = reshape(newTargets, Ly, Lx, ...
-            length(planesToInterpolate), size(xFOVs,2));
-        for i = 1:length(planesToInterpolate)
-            for j = 1:size(xFOVs,2)
-                ops1{planesToInterpolate(i),j}.mimg = newTargets(:,:,i,j);
+        newTargets = getImgOverPlanes(ops1, ops.planesToInterpolate);
+        for i = 1:length(ops.planesToInterpolate)
+            for l = 1:size(xFOVs,2)
+                ops1{ops.planesToInterpolate(i),l}.mimg = newTargets(:,:,i,l);
             end
         end
     end
     
     % display target image
-    if ops.fig   
+    if ops.fig && ops.showTargetRegistration
         PlotRegMean(ops1,ops);
         drawnow
     end
     clear IMG
     
-% don't recompute mean image
-else 
+else   % don't recompute mean image
     ops1 = cell(numPlanes, 1);
     for i = 1:numPlanes
         ops1{i} = ops;
@@ -124,66 +104,54 @@ else
     end
 end
 
-%% open files for registration
-fid = cell(numPlanes, size(xFOVs,2));
-fidIntpol = [];
-if ops.interpolateAcrossPlanes == 1 && ~isempty(RegFileBinLocation)
-    fidIntpol = cell(numPlanes, size(xFOVs,2));
-end
+%% initialize mean imgs and shifts
 for i = 1:numPlanes
     for j = 1:size(xFOVs,2)
-        ops1{i,j}.RegFile = fullfile(ops.RegFileRoot, ...
-            sprintf('%s_%s_%s_plane%d.bin', ops.mouse_name, ops.date, ...
-            ops.CharSubDirs, i + (j-1)*numPlanes));
-        regdir = fileparts(ops1{i,j}.RegFile);
-        if ~exist(regdir, 'dir')
-            mkdir(regdir);
+        if red_mean || red_align
+            ops1{i,j}.mimgRED       = zeros(ops1{i,j}.Ly, ops1{i,j}.Lx);
         end
-        
-        % open bin file for writing
-        fid{i,j}              = fopen(ops1{i,j}.RegFile, 'w');
-        
-        
-        ops1{i,j}.RegFile2 = fullfile(ops.RegFileRoot, ...
-            sprintf('%s_%s_%s_plane%d_RED.bin', ops.mouse_name, ops.date, ...
-            ops.CharSubDirs, i + (j-1)*numPlanes));
-%         fidRED{i,j}              = fopen(ops1{i,j}.RegFile2, 'w');
-        
         ops1{i,j}.DS          = [];
         ops1{i,j}.CorrFrame   = [];
         ops1{i,j}.mimg1       = zeros(ops1{i,j}.Ly, ops1{i,j}.Lx);
-        
-        if interpolateAcrossPlanes && ~isempty(RegFileBinLocation)
-            % open separate files for result after averaging across
-            % neighbouring planes
-            str = sprintf('%d_',ops1{i,j}.expts);
-            str(end) = [];
-            folder = fullfile(ops1{i,j}.RegFileBinLocation, ops1{i,j}.mouse_name, ...
-                ops1{i,j}.date, str, 'interpolated');
-            if ~exist(folder, 'dir')
-                mkdir(folder);
+        if ops.nonrigid
+            ops1{i}.mimgB = cell(prod(ops.numBlocks),1);
+            for ib = 1:ops.numBlocks(1)*ops.numBlocks(2)
+                ops1{i}.mimgB{ib} = ops1{i}.mimg(ops1{i}.yBL{ib}, ops1{i}.xBL{ib});
             end
-            fidIntpol{i,j} = fopen(fullfile(folder, ...
-                sprintf('%s_%s_%s_plane%d.bin', ops.mouse_name, ops.date, ...
-                ops.CharSubDirs, i + (j-1)*numPlanes)), 'w');
         end
     end
 end
+
+%% open files for registration
+
+[ops1, fid, fidRED, fidIntpol] = openBinFiles(ops, ops1, red_binary);
+
 
 %%
 tic
 % compute registration offsets and align using offsets
 % if two consecutive files have as many bytes, they have as many frames
 nbytes = 0;
+
+xyValid = true(Ly,Lx);
 for k = 1:length(fs)
+    % in case different experiments have different numbers of channels
     if ismember(ops.expts(k), getOr(ops, 'expred', []))
         nchannels_expt = ops.nchannels_red;
+        red_mean_expt  = red_mean;
     else
         nchannels_expt = ops.nchannels;
+        red_mean_expt  = 0;
     end
+    if red_align
+        reg_channel = rchannel;
+    else
+        reg_channel = ichannel;
+    end
+        
     % initialize frame count
     for i = 1:numel(ops1)
-         ops1{i}.Nframes(k)     = 0;
+        ops1{i}.Nframes(k)     = 0;
     end
     
     iplane0 = 1:1:ops.nplanes; % identity of planes for first frames in tiff file
@@ -194,115 +162,165 @@ for k = 1:length(fs)
             nbytes = fs{k}(j).bytes;
             nFr = nFramesTiff(fs{k}(j).name);
         end
-        
-        iplane0 = mod(iplane0-1, numPlanes) + 1;
-        if red_align
-            ichanset = [rchannel; nFr; nchannels_expt];
-        else
-            ichanset = [ichannel; nFr; nchannels_expt];
+        if mod(nFr, nchannels_expt) ~= 0
+            fprintf('  WARNING: number of frames in tiff (%d) is NOT a multiple of number of channels!\n', j);
         end
-        % only load frames of registration channel
-        data = loadFramesBuff(fs{k}(j).name, ichanset(1), ichanset(2), ...
-            ichanset(3), ops.temp_tiff);
-        
-        if abs(BiDiPhase) > 0 
-            data = ShiftBiDi(BiDiPhase, data, Ly, Lx);
-        end
-    
-        if ops.doRegistration
-            % get the registration offsets for each frame
-            [dsall, ops1] = GetRegOffsets(data, k, j, iplane0, ops, ops1);
-            
-            if ~alignAcrossPlanes
-                if red_align
-                    % if aligning by the red channel, data needs to be reloaded as the
-                    % green channel
-                    %                 nFr = nFramesTiff(fs{k}(j).name);
-                    if mod(nFr, nchannels_expt) ~= 0
-                        fprintf('  WARNING: number of frames in tiff (%d) is NOT a multiple of number of channels!\n', j);
-                    end
-                    ichanset = [ichannel; nFr; nchannels_expt];
-                    data = loadFramesBuff(ops.temp_tiff, ichanset(1), ichanset(2), ichanset(3), ops.temp_tiff);
-                    % shift green channel by same bidiphase offset
-                    if abs(BiDiPhase) > 0
-                        data = ShiftBiDi(BiDiPhase, data, Ly, Lx);
-                    end
-    
-                end
-                % align the frames according to the registration offsets
-                dreg = RegMovie(data, ops1, dsall, yFOVs, xFOVs);
                 
-%                 ichanset = [rchannel; nFr; nchannels_expt];
-%                 data = loadFramesBuff(ops.temp_tiff, ichanset(1), ichanset(2), ichanset(3));
-%                 data = ShiftBiDi(BiDiPhase, data, Ly, Lx);
-%                 dreg2 = RegMovie(data, ops1, dsall, yFOVs, xFOVs);
+        iplane0 = mod(iplane0-1, numPlanes) + 1;
+        % only load frames of registration channel
+        data = loadFramesBuff(fs{k}(j).name, reg_channel, nFr, nchannels_expt, ops.temp_tiff);
+        if ~isempty(ops.temp_tiff)
+            tiff_file = ops.temp_tiff;
+        else
+            tiff_file = fs{k}(j).name;
+        end
+        if abs(BiDiPhase) > 0; data = ShiftBiDi(BiDiPhase, data, Ly, Lx); end
+        
+        % get the registration offsets for each frame
+        if ops.doRegistration
+            if ops.nonrigid
+                [dsall, ops1] = nonrigidOffsets(data, j, iplane0, ops, ops1);
+            else
+                [dsall, ops1] = rigidOffsets(data, j, iplane0, ops, ops1);
+            end
+        end
+        
+        if ops.alignAcrossPlanes
+            if rem(j,5)==1
+                fprintf('Set %d, tiff %d done in time %2.2f \n', k, j, toc)
+            end
+            iplane0 = iplane0 - nFr/nchannels_expt;
+            continue;
+        end
+        
+        if ops.doRegistration
+            % if aligning by the red channel, data needs to be reloaded as the green channel
+            if red_align
+                data_red = data;
+                data = loadFramesBuff(tiff_file, ichannel, nFr, nchannels_expt, ops.temp_tiff);
+                if abs(BiDiPhase) > 0; data = ShiftBiDi(BiDiPhase, data, Ly, Lx);  end
+            end
+            % load red channel for red binary file if not already loaded for red alignment
+            if red_mean_expt && ~red_align
+                data_red = loadFramesBuff(tiff_file, rchannel, nFr, nchannels_expt, ops.temp_tiff);
+                if abs(BiDiPhase) > 0; data_red = ShiftBiDi(BiDiPhase, data_red, Ly, Lx); end
+            end
+            % align the frames according to the registration offsets
+            if ops.nonrigid
+                [dreg, xyValid] = nonrigidMovie(data, ops, dsall, xyValid);
+            else
+                dreg = rigidMovie(data, ops1, dsall, yFOVs, xFOVs);
+            end
+            
+            if red_mean_expt || red_align
+                if ops.nonrigid
+                    [dreg2, xyValid] = nonrigidMovie(data_red, ops, dsall, xyValid);
+                else
+                    dreg2 = rigidMovie(data_red, ops1, dsall, yFOVs, xFOVs);
+                end
             end
         else
             dreg = data;
         end
         
         % write dreg to bin file+
-        if ~alignAcrossPlanes
-            for i = 1:numPlanes
-                ifr0 = iplane0(ops.planesToProcess(i));
-                indframes = ifr0:nplanes:size(data,3);
-                for l = 1:size(xFOVs,2)
-                    dwrite = dreg(yFOVs(:,l),xFOVs(:,l),indframes);
-                    fwrite(fid{i,l}, dwrite, class(data));
-                    
-%                     dwrite = dreg2(yFOVs(:,l),xFOVs(:,l),indframes);
-%                     fwrite(fidRED{i,l}, dwrite, class(data));
-                    
-                    ops1{i,l}.mimg1 = ops1{i,l}.mimg1 + sum(dwrite,3);
+        for i = 1:numPlanes
+            ifr0 = iplane0(ops.planesToProcess(i));
+            indframes = ifr0:nplanes:size(data,3);
+            for l = 1:size(xFOVs,2)
+                dwrite = dreg(yFOVs(:,l),xFOVs(:,l),indframes);
+                fwrite(fid{i,l}, dwrite, class(data));
+                ops1{i,l}.Nframes(k) = ops1{i,l}.Nframes(k) + size(dwrite,3);
+                ops1{i,l}.mimg1 = ops1{i,l}.mimg1 + sum(dwrite,3);
+                
+                if red_mean_expt || red_align
+                    dwrite = dreg2(yFOVs(:,l),xFOVs(:,l),indframes);
+                    ops1{i,l}.mimgRED = ops1{i,l}.mimgRED + sum(dwrite,3);
+                end
+                if red_binary
+                    fwrite(fidRED{i,l}, dwrite, class(data));
                 end
             end
         end
         
+        
         if rem(j,5)==1
-            fprintf('Set %d, tiff %d done in time %2.2f \n', k, j, toc)            
+            fprintf('Set %d, tiff %d done in time %2.2f \n', k, j, toc)
         end
         
+        %keyboard;
         iplane0 = iplane0 - nFr/nchannels_expt;
-    end    
+    end
 end
 
-if alignAcrossPlanes && ops.doRegistration % align each frame with the best matching target image
-    [ops1, planesToInterp] = registerAcrossPlanes(ops1, ops, fid, fidIntpol);
+if ops.alignAcrossPlanes && ops.doRegistration % align each frame with the best matching target image
+    if ops.nonrigid
+        [ops1, planesToInterp] = registerBlocksAcrossPlanes(ops1, ops, fid, fidIntpol);
+    else
+        [ops1, planesToInterp] = registerAcrossPlanes(ops1, ops, fid, fidIntpol);
+    end
 end
 
 for i = 1:numel(ops1)
     ops1{i}.mimg1 = ops1{i}.mimg1/sum(ops1{i}.Nframes);
-    
+    if red_mean || red_align
+        red_expts = ismember(ops.expts, getOr(ops, 'expred', []));
+        ops1{i}.mimgRED = ops1{i}.mimgRED/sum(ops1{i}.Nframes(red_expts));
+        if red_binary
+            fclose(fidRED{i});
+        end
+    end
     ops1{i}.badframes = false(1, size(ops1{i}.DS,1));
     if isfield(ops, 'badframes0') && ~isempty(ops.badframes0)
         ops1{i}.badframes(ops.badframes0) = true;
     end
+    fclose(fid{i});
+    if ops.interpolateAcrossPlanes
+        fclose(fidIntpol{i});
+    end
 end
+
 %%
 
-% write registered tiffs to disk if ~isempty(ops.RegFileTiffLocation)
-for i = 1:numel(ops1)    
-    fclose(fid{i});
-    
-    fid{i}           = fopen(ops1{i}.RegFile, 'r');
-    
-    if ~isempty(ops.RegFileTiffLocation)
-        ops1{i} = write_reg_to_tiff(fid{i}, ops1{i}, i);
-        frewind(fid{i});
-    end    
-    if ~isempty(ops.nimgbegend) && ops.nimgbegend>0
+% get mean of first and last frames in block (to check for drift)
+if ~isempty(ops.nimgbegend) && ops.nimgbegend>0
+    for i = 1:numel(ops1)
+        fid{i}           = fopen(ops1{i}.RegFile, 'r');
         ops1{i} = getBlockBegEnd(fid{i}, ops1{i}); % get mean of first and last frames in block (to check for drift)
-        frewind(fid{i});
+        fclose(fid{i});
     end
-    if ~isempty(ops.RegFileBinLocation)
-        folder = fullfile(ops1{i}.RegFileBinLocation, ops1{i}.mouse_name, ...
-            ops1{i}.date, ops.CharSubDirs);
-        if ~exist(folder, 'dir')
-            mkdir(folder)
-        end
-        fidCopy = fopen(fullfile(folder, ...
-            sprintf('%s_%s_%s_plane%d.bin', ops.mouse_name, ops.date, ...
-            ops.CharSubDirs, i)), 'w');
+end
+
+
+% write registered tiffs to disk if ~isempty(ops.RegFileTiffLocation)
+if ~isempty(ops.RegFileTiffLocation)
+    for i = 1:numel(ops1)
+        fid{i}           = fopen(ops1{i}.RegFile, 'r');
+        ops1{i} = write_reg_to_tiff(fid{i}, ops1{i}, i, 0);
+        fclose(fid{i});
+        
+        if red_binary
+            fidRED{i}           = fopen(ops1{i}.RegFile2, 'r');
+            ops1{i} = write_reg_to_tiff(fidRED{i}, ops1{i}, i, 1);
+            fclose(fidRED{i});
+        end   
+    end
+end
+
+% copy binary file if ~isempty(ops.RegFileBinLocation)
+if ~isempty(ops.RegFileBinLocation)
+    copyBinFile(ops1);
+end
+
+if ops.interpolateAcrossPlanes == 1 && ~isempty(RegFileBinLocation)
+    folder = fullfile(ops1{i}.RegFileBinLocation, ops1{i}.mouse_name, ...
+        ops1{i}.date, ops.CharSubDirs, 'interpolated');
+    filename = fullfile(folder, ...
+        sprintf('%s_%s_%s_plane%d.bin', ops.mouse_name, ops.date, ...
+        ops.CharSubDirs, i));
+    if ismember(i, planesToInterp)
+        fidCopy = fopen(ops1{i}.RegFile, 'w');
+        fidOrig = fopen(filename, 'r');
         sz = ops1{i}.Lx * ops1{i}.Ly;
         parts = ceil(sum(ops1{i}.Nframes) / 2000);
         for p = 1:parts
@@ -310,82 +328,27 @@ for i = 1:numel(ops1)
             if p == parts
                 toRead = sum(ops1{i}.Nframes) - 2000 * (parts-1);
             end
-            data = fread(fid{i},  sz*toRead, '*int16');
+            data = fread(fidOrig,  sz*toRead, '*int16');
             fwrite(fidCopy, data, class(data));
         end
         fclose(fidCopy);
-        fclose(fid{i});
-        
-        if ops.interpolateAcrossPlanes == 1 && ~isempty(RegFileBinLocation)
-            fclose(fidIntpol{i});
-            folder = fullfile(ops1{i}.RegFileBinLocation, ops1{i}.mouse_name, ...
-                ops1{i}.date, ops.CharSubDirs, 'interpolated');
-            filename = fullfile(folder, ...
-                sprintf('%s_%s_%s_plane%d.bin', ops.mouse_name, ops.date, ...
-                ops.CharSubDirs, i));
-            if ismember(i, planesToInterp)
-                fidCopy = fopen(ops1{i}.RegFile, 'w');
-                fidOrig = fopen(filename, 'r');
-                sz = ops1{i}.Lx * ops1{i}.Ly;
-                parts = ceil(sum(ops1{i}.Nframes) / 2000);
-                for p = 1:parts
-                    toRead = 2000;
-                    if p == parts
-                        toRead = sum(ops1{i}.Nframes) - 2000 * (parts-1);
-                    end
-                    data = fread(fidOrig,  sz*toRead, '*int16');
-                    fwrite(fidCopy, data, class(data));
-                end
-                fclose(fidCopy);
-                fclose(fidOrig);
-            else
-                delete(filename)
-            end
-        end
+        fclose(fidOrig);
+    else
+        delete(filename)
     end
 end
+
 %%
 % compute outlier frames and xrange, yrange of registered frames
-for i = 1:numel(ops1)
-    if ops.doRegistration
-        if size(ops1{i}.DS,3) > 1
-            % determine bad frames
-            ops = ops1{i};
-            ops.CorrFrame(~ops.usedPlanes) = NaN;
-            ops.CorrFrame = nanmean(ops.CorrFrame,2);
-            badi = getOutliers(ops);
-            ops1{i}.badframes(badi) = true;
-            
-            ind = repmat(~ops1{i}.badframes',1,2,nplanes) & ...
-                repmat(permute(ops1{i}.usedPlanes, [1 3 2]),1,2,1);
-            ds = ops1{i}.DS;
-            ds = ds(ind); % [time x [x,y] x nplanes]
-            ds = reshape(permute(ds, [1 3 2]), [], 2);
-        else
-            % determine bad frames
-            badi                    = getOutliers(ops1{i});
-            ops1{i}.badframes(badi) = true;
-            
-            ds = ops1{i}.DS(~ops1{i}.badframes,:);
-        end
-        
-        minDs = min(ds, [], 1);
-        maxDs = max(ds, [], 1);
-        disp([minDs(1) maxDs(1) minDs(2) maxDs(2)])
-        if BiDiPhase>0
-            maxDs(2) = max(1+BiDiPhase, maxDs(2));
-        elseif BiDiPhase<0
-            minDs(2) = min(BiDiPhase, minDs(2));
-        end
-        
-        ops1{i}.yrange = ceil(1 + maxDs(1)) : floor(ops1{i}.Ly+minDs(1));
-        ops1{i}.xrange = ceil(1 + maxDs(2)) : floor(ops1{i}.Lx+minDs(2));
-    else
+if ops.doRegistration
+    ops1 = getRangeNoOutliers(ops, ops1);
+else
+    for i = 1:numel(ops1)
         ops1{i}.yrange = 1:Ly;
         ops1{i}.xrange = 1:Lx;
-    end  
+    end
 end
-    
+
 savepath = sprintf('%s/', ops.ResultsSavePath);
 if ~exist(savepath, 'dir')
     mkdir(savepath)
@@ -395,6 +358,6 @@ save(sprintf('%s/regops_%s_%s.mat', ops.ResultsSavePath, ...
 
 
 %save(sprintf('%s/F_%s_%s_plane%d.mat', ops.ResultsSavePath, ...
- %   ops.mouse_name, ops.date, iplane), 'ops')
+%   ops.mouse_name, ops.date, iplane), 'ops')
 
 %%
