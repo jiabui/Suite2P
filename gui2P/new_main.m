@@ -928,7 +928,7 @@ function edit52_Callback(hObject, eventdata, h)
 h.statmins(h.statnum) = str2double(get(hObject,'String'));
 
 goodcells = set_thres(h.dat.stat, h.statstrs, h.statmins, h.statmaxs);
-<<<<<<< HEAD
+% <<<<<<< HEAD
 if ~h.isThresholdcurrentselection    
     [h.dat.stat(~goodcells).iscell] = deal(0);
     [h.dat.stat(goodcells).iscell]  = deal(1);
@@ -938,10 +938,10 @@ else
     [h.dat.stat(~tf).iscell] = deal(0);
     [h.dat.stat(tf).iscell] = deal(1);
 end
-=======
+% =======
 [h.dat.stat(~goodcells).iscell] = deal(0);
 [h.dat.stat(goodcells).iscell]  = deal(1);
->>>>>>> 071a42a624d71b2a267acba2acdd9a9e9c6fbea7
+% >>>>>>> 071a42a624d71b2a267acba2acdd9a9e9c6fbea7
 
 redraw_figure(h);
 
@@ -971,7 +971,7 @@ function edit54_Callback(hObject, eventdata, h)
 h.statmaxs(h.statnum) = str2double(get(hObject,'String'));
 
 goodcells = set_thres(h.dat.stat, h.statstrs, h.statmins, h.statmaxs);
-<<<<<<< HEAD
+% <<<<<<< HEAD
 if ~h.isThresholdcurrentselection    
     [h.dat.stat(~goodcells).iscell] = deal(0);
     [h.dat.stat(goodcells).iscell]  = deal(1);
@@ -981,10 +981,10 @@ else
     [h.dat.stat(~tf).iscell] = deal(0);
     [h.dat.stat(tf).iscell] = deal(1);
 end
-=======
+% =======
 [h.dat.stat(~goodcells).iscell] = deal(0);
 [h.dat.stat(goodcells).iscell]  = deal(1);
->>>>>>> 071a42a624d71b2a267acba2acdd9a9e9c6fbea7
+% >>>>>>> 071a42a624d71b2a267acba2acdd9a9e9c6fbea7
 
 redraw_figure(h);
 
@@ -1017,7 +1017,7 @@ end
     
 
 
-<<<<<<< HEAD
+% <<<<<<< HEAD
 % --- Executes on button press in pb_export.
 function pb_export_Callback(hObject, eventdata, h)
 % hObject    handle to pb_export (see GCBO)
@@ -1034,7 +1034,7 @@ function checkbox1_Callback(hObject, eventdata, h)
 h.isThresholdcurrentselection = get(hObject,'Value');
 guidata(hObject,h);
 % Hint: get(hObject,'Value') returns toggle state of checkbox1
-=======
+% =======
 
 
->>>>>>> 071a42a624d71b2a267acba2acdd9a9e9c6fbea7
+% >>>>>>> 071a42a624d71b2a267acba2acdd9a9e9c6fbea7
