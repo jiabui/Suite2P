@@ -58,6 +58,10 @@ try
     else
         root = 'D:\DATA\F\';
     end
+    try
+        root = dataroot;
+    catch
+    end
     [filename1,filepath1]=uigetfile(fullfile(root, 'F*.mat'), 'Select Data File');
     set(h.figure1, 'Name', filename1);
     
@@ -714,7 +718,16 @@ end
 rootS2p = fileparts(rootS2p);
 rootS2p = fullfile(rootS2p, 'configFiles');
 
-[filename1,filepath1]   = uigetfile(fullfile(rootS2p, '*.mat'), 'Select classifier file');
+try
+    clRoot = fullfile(calimgRoot, '+s2p', 'classifiers');
+    if ~exist(clRoot, 'dir')
+        error('')
+    end
+catch
+    clRoot = rootS2p;
+end
+
+[filename1,filepath1]   = uigetfile(fullfile(clRoot, '*.mat'), 'Select classifier file');
 if filename1
     h.dat.cl.fpath          = fullfile(filepath1, filename1);
     h                       = classROI(h);
@@ -762,7 +775,7 @@ rootS2p = fileparts(rootS2p);
 rootS2p = fullfile(rootS2p, 'configFiles');
 
 def_name = fullfile(rootS2p, 'cl_new.mat');
-
+    
 [filename1,filepath1]   = uigetfile(fullfile(rootS2p, 'priors', '*.mat'), ...
         'Select priors file, will be used to seed the new classifier');
 if filename1
@@ -771,7 +784,18 @@ else
     error('you must choose a priors file')
 end
 
-[FileName,PathName] = uiputfile('*.mat', 'Create new classifier', def_name); 
+try
+    clRoot = fullfile(calimgRoot, '+s2p', 'classifiers');
+    if ~exist(clRoot, 'dir')
+        error('')
+    end
+    def_name = fullfile(clRoot, 'cl_new.mat');
+catch
+    clRoot = rootS2p;
+end
+
+[FileName,PathName] = uiputfile(fullfile(clRoot, '*.mat'), ...
+                                'Create new classifier', def_name);
 
 if FileName
     load(prior_file);
@@ -928,7 +952,7 @@ function edit52_Callback(hObject, eventdata, h)
 h.statmins(h.statnum) = str2double(get(hObject,'String'));
 
 goodcells = set_thres(h.dat.stat, h.statstrs, h.statmins, h.statmaxs);
-<<<<<<< HEAD
+%<<<<<<< HEAD
 if ~h.isThresholdcurrentselection    
     [h.dat.stat(~goodcells).iscell] = deal(0);
     [h.dat.stat(goodcells).iscell]  = deal(1);
@@ -938,10 +962,10 @@ else
     [h.dat.stat(~tf).iscell] = deal(0);
     [h.dat.stat(tf).iscell] = deal(1);
 end
-=======
+%=======
 [h.dat.stat(~goodcells).iscell] = deal(0);
 [h.dat.stat(goodcells).iscell]  = deal(1);
->>>>>>> 071a42a624d71b2a267acba2acdd9a9e9c6fbea7
+%>>>>>>> 071a42a624d71b2a267acba2acdd9a9e9c6fbea7
 
 redraw_figure(h);
 
@@ -971,7 +995,7 @@ function edit54_Callback(hObject, eventdata, h)
 h.statmaxs(h.statnum) = str2double(get(hObject,'String'));
 
 goodcells = set_thres(h.dat.stat, h.statstrs, h.statmins, h.statmaxs);
-<<<<<<< HEAD
+%<<<<<<< HEAD
 if ~h.isThresholdcurrentselection    
     [h.dat.stat(~goodcells).iscell] = deal(0);
     [h.dat.stat(goodcells).iscell]  = deal(1);
@@ -981,10 +1005,10 @@ else
     [h.dat.stat(~tf).iscell] = deal(0);
     [h.dat.stat(tf).iscell] = deal(1);
 end
-=======
+%=======
 [h.dat.stat(~goodcells).iscell] = deal(0);
 [h.dat.stat(goodcells).iscell]  = deal(1);
->>>>>>> 071a42a624d71b2a267acba2acdd9a9e9c6fbea7
+%>>>>>>> 071a42a624d71b2a267acba2acdd9a9e9c6fbea7
 
 redraw_figure(h);
 
@@ -1017,7 +1041,7 @@ end
     
 
 
-<<<<<<< HEAD
+%<<<<<<< HEAD
 % --- Executes on button press in pb_export.
 function pb_export_Callback(hObject, eventdata, h)
 % hObject    handle to pb_export (see GCBO)
@@ -1034,7 +1058,7 @@ function checkbox1_Callback(hObject, eventdata, h)
 h.isThresholdcurrentselection = get(hObject,'Value');
 guidata(hObject,h);
 % Hint: get(hObject,'Value') returns toggle state of checkbox1
-=======
+%=======
 
 
->>>>>>> 071a42a624d71b2a267acba2acdd9a9e9c6fbea7
+%>>>>>>> 071a42a624d71b2a267acba2acdd9a9e9c6fbea7
