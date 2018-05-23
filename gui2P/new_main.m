@@ -962,7 +962,7 @@ else
     [h.dat.stat(~tf).iscell] = deal(0);
     [h.dat.stat(tf).iscell] = deal(1);
 end
-%=======
+% =======
 [h.dat.stat(~goodcells).iscell] = deal(0);
 [h.dat.stat(goodcells).iscell]  = deal(1);
 %>>>>>>> 071a42a624d71b2a267acba2acdd9a9e9c6fbea7
